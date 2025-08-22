@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import Host, ProcessSnapshot, Process
-from .serializers import ProcessSerializer
+from .serializers import ProcessSerializer, HostSerializer
 from datetime import datetime
 from django.conf import settings
 
@@ -41,11 +41,7 @@ class ReceiveProcessData(APIView):
 class RetrieveProcessData(APIView):
     def get(self, request, hostname):
         host = get_object_or_404(Host, hostname=hostname)
-        timestamp = request.GET.get('timestamp')
-        if timestamp:
-            snapshot = get_object_or_404(ProcessSnapshot, host=host)
-        else:
-            snapshot = host.processsnapshot_set.latest('timestamp')
+        snapshot = get_object_or_404(ProcessSnapshot, host=host)
         process = Process.objects.filter(snapshot=snapshot)
         serializer = ProcessSerializer(process, many=True)
         return Response({
@@ -53,3 +49,9 @@ class RetrieveProcessData(APIView):
             "timestamp": snapshot.timestamp,
             "processes": serializer.data
         })
+
+class RetrieveHosts(APIView):
+    def get(self, request):
+        hosts = Host.objects.all()
+        serializer = HostSerializer(hosts, many=True)
+        return  Response(serializer.data)
