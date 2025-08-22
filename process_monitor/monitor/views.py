@@ -10,33 +10,49 @@ from .serializers import ProcessSerializer, HostSerializer
 from datetime import datetime
 from django.conf import settings
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.conf import settings
+from .models import Host, Process, ProcessSnapshot
+from datetime import datetime
+
 class ReceiveProcessData(APIView):
     def post(self, request):
-        if request.headers.get('X-API-KEY') != settings.API_KEY:
-            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        api_key = request.headers.get("X-API-KEY")
+        if api_key != settings.API_KEY:
+            return Response({"error": "Invalid API key"}, status=status.HTTP_403_FORBIDDEN)
 
-        data = request.data
-        hostname = data.get('hostname')
-        processes = data.get('processes')
-        timestamp = datetime.now()
+        hostname = request.data.get("hostname")
+        processes = request.data.get("processes", [])
+        timestamp = request.data.get("timestamp", datetime.utcnow().isoformat())
 
-        if not hostname or not processes:
-            return Response({'error': 'Missing data'}, status=status.HTTP_400_BAD_REQUEST)
+        if not hostname:
+            return Response({"error": "Hostname required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # create or get host
         host, _ = Host.objects.get_or_create(hostname=hostname)
+
+        # create snapshot
         snapshot = ProcessSnapshot.objects.create(host=host, timestamp=timestamp)
 
-        for proc in processes:
-            Process.objects.create(
+        # bulk insert processes
+        process_objects = [
+            Process(
                 snapshot=snapshot,
-                name=proc['name'],
-                pid=proc['pid'],
-                cpu_percent=proc['cpu_percent'],
-                memory_mb=proc['memory_mb'],
-                parent_pid=proc.get('parent_pid')
+                pid=p["pid"],
+                parent_pid=p.get("ppid"),
+                name=p["name"],
+                cpu_percent=p.get("cpu_percent", 0),
+                memory_mb=round((p.get("mem_rss", 0) or 0) / (1024*1024), 2)  # convert bytes → MB
             )
+            for p in processes
+        ]
+        Process.objects.bulk_create(process_objects)
 
-        return Response({'message': 'Data received'}, status=status.HTTP_201_CREATED)
+        return Response({"status": "success"}, status=status.HTTP_201_CREATED)
+
+
 
 class RetrieveProcessData(APIView):
     def get(self, request, hostname):

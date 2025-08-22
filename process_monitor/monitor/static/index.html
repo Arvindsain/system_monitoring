@@ -4,126 +4,95 @@
   <meta charset="UTF-8">
   <title>Process Monitor</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-    h1 { margin-top: 0; }
-    .muted { color: #666; font-size: 12px; }
+    body { margin: 0; font-family: Arial, sans-serif; }
+    .container { display: flex; height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 200px;
+      background: #2b3148;
+      color: #fff;
+      padding: 20px 10px;
+    }
+    .sidebar h2 { font-size: 18px; margin: 0 0 15px; }
+    .sidebar ul { list-style: none; padding: 0; }
+    .sidebar li {
+      padding: 10px;
+      border-radius: 6px;
+      background: #414970;
+    }
+
+    /* Main panel */
+    .main {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 15px;
+      margin-top: 10px;
     }
     th, td {
       border: 1px solid #ccc;
-      padding: 8px 10px;
+      padding: 6px 10px;
       text-align: left;
     }
-    th {
-      background: #2b3148;
-      color: #fff;
-    }
+    th { background: #2b3148; color: #fff; }
     tr:nth-child(even) { background: #f9f9f9; }
 
-    .toggle { cursor: pointer; font-weight: bold; margin-right: 6px; }
-    .hidden { display: none; }
-    .indent { padding-left: 20px; }
+    .toggle { cursor: pointer; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Process Monitor</h1>
-  <p>Select Host: <select id="hostSelect" onchange="updateHost()"></select></p>
-  <p>Host: <span id="hostname"></span></p>
-  <p>Timestamp: <span id="timestamp"></span></p>
-  <button onclick="updateHost()">Refresh</button>
+  <div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <h2>Monitor</h2>
+      <ul>
+        <li>Process Tree</li>
+      </ul>
+    </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th></th>
-        <th>Host</th>
-        <th>Name</th>
-        <th>PID</th>
-        <th>PPID</th>
-        <th>CPU (%)</th>
-        <th>Memory (MB)</th>
-      </tr>
-    </thead>
-    <tbody id="procTable"></tbody>
-  </table>
+    <!-- Main Panel -->
+    <div class="main">
+      <div class="controls">
+        <button id="refreshBtn" onclick="updateHost()">Refresh</button>
+        <select id="hostSelect" onchange="updateHost()"></select>
+        <span>Host: <b id="hostname"></b></span> |
+        <span>Timestamp: <b id="timestamp"></b></span>
+      </div>
+
+      <!-- Process Tree Table -->
+      <table id="procTable">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Host</th>
+            <th>Name</th>
+            <th>PID</th>
+            <th>PPID</th>
+            <th>CPU (%)</th>
+            <th>Memory (MB)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
 
   <script>
     const HOSTS_URL = "http://127.0.0.1:8000/hosts/";
     const BASE_URL = "http://127.0.0.1:8000/retrieve/";
 
-    function buildTree(processes) {
-      const map = {};
-      processes.forEach(p => map[p.pid] = { ...p, children: [] });
-      processes.forEach(p => {
-        if (p.ppid && map[p.ppid]) {
-          map[p.ppid].children.push(map[p.pid]);
-        }
-      });
-      return processes.filter(p => !p.ppid || !map[p.ppid]).map(p => map[p.pid]);
-    }
-
-    function renderRow(proc, level = 0, host = "") {
-      const tr = document.createElement("tr");
-      tr.id = `row-${host}-${proc.pid}`;
-      tr.dataset.level = level;
-
-      if (level > 0) {
-        tr.style.display = "none";
-      }
-
-      const toggleCell = document.createElement("td");
-      if (proc.children.length) {
-        const btn = document.createElement("span");
-        btn.textContent = "▶";
-        btn.className = "toggle";
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const isClosed = btn.textContent === "▶";
-          btn.textContent = isClosed ? "▼" : "▶";
-          proc.children.forEach(ch => toggleChild(ch, isClosed));
-        };
-        toggleCell.appendChild(btn);
-      }
-      tr.appendChild(toggleCell);
-
-      tr.innerHTML += `
-        <td>${host}</td>
-        <td style="padding-left:${20*level}px">${proc.name}</td>
-        <td>${proc.pid}</td>
-        <td>${proc.ppid ?? "-"}</td>
-        <td>${(proc.cpu_percent ?? 0).toFixed(1)}</td>
-        <td>${proc.mem_rss ? (proc.mem_rss/1024/1024).toFixed(2) : 0}</td>
-      `;
-
-      return [tr, ...proc.children.flatMap(ch => renderRow(ch, level + 1, host))];
-    }
-
-    function toggleChild(proc, show) {
-      const row = document.getElementById(`row-${proc.host}-${proc.pid}`);
-      if (row) {
-        row.style.display = show ? "" : "none";
-        if (!show) {
-          proc.children.forEach(ch => toggleChild(ch, false));
-        }
-        const toggle = row.querySelector(".toggle");
-        if (toggle && !show) toggle.textContent = "▶";
-      }
-    }
-
     function fetchHosts() {
       fetch(HOSTS_URL)
         .then(res => res.json())
         .then(data => {
-          const hosts = data.map(h => h.hostname);  // Extract hostname from objects
+          const hosts = data.map(h => h.hostname);
           const select = document.getElementById("hostSelect");
-          const allOption = document.createElement("option");
-          allOption.value = "all";
-          allOption.text = "All";
-          select.add(allOption);
+          select.innerHTML = "";
           hosts.forEach(h => {
             const opt = document.createElement("option");
             opt.value = h;
@@ -131,67 +100,72 @@
             select.add(opt);
           });
           if (hosts.length > 0) {
-            select.value = "all"; // Default to all
+            select.value = hosts[0];
             updateHost();
           }
-        })
-        .catch(err => console.error("Error fetching hosts:", err));
+        });
     }
 
     function updateHost() {
-      const selected = document.getElementById("hostSelect").value;
-      const tbody = document.getElementById("procTable");
-      tbody.innerHTML = "";
-      if (selected === "all") {
-        document.getElementById("hostname").textContent = "All Hosts";
-        document.getElementById("timestamp").textContent = "Various";
-        fetchAllHosts();
-      } else {
-        fetchSingleHost(selected);
-      }
-    }
-
-    function fetchSingleHost(host) {
-      fetch(`${BASE_URL}${host}/`)
-        .then(res => res.json())
-        .then(data => {
-          document.getElementById("hostname").textContent = data.host;
-          document.getElementById("timestamp").textContent = data.timestamp;
-          renderHostData(data, data.host);
-        })
-        .catch(err => console.error("Error:", err));
-    }
-
-    function fetchAllHosts() {
-      fetch(HOSTS_URL)
-        .then(res => res.json())
-        .then(data => {
-          const hosts = data.map(h => h.hostname);
-          Promise.all(hosts.map(h => fetch(`${BASE_URL}${h}/`).then(res => res.json())))
-            .then(datas => {
-              datas.forEach(d => renderHostData(d, d.host));
-            })
-            .catch(err => console.error("Error fetching all:", err));
-        })
-        .catch(err => console.error("Error fetching hosts for all:", err));
-    }
-
-    function renderHostData(data, host) {
-      const tbody = document.getElementById("procTable");
-
-      const separator = document.createElement("tr");
-      separator.innerHTML = `<td colspan="7" style="background:#ddd; font-weight:bold">Host: ${data.host} - Timestamp: ${data.timestamp}</td>`;
-      tbody.appendChild(separator);
-
-      const roots = buildTree(data.processes);
-      roots.forEach(proc => {
-        const rows = renderRow(proc, 0, host);
-        rows.forEach(r => tbody.appendChild(r));
+      const host = document.getElementById("hostSelect").value;
+      fetch(`${BASE_URL}${host}/`).then(res => res.json()).then(data => {
+        document.getElementById("hostname").textContent = data.host;
+        document.getElementById("timestamp").textContent = data.timestamp;
+        renderProcessTree(data.processes, host);
       });
     }
 
-    setInterval(updateHost, 30000);
+    function buildTree(processes) {
+      const map = {};
+      processes.forEach(p => map[p.pid] = { ...p, children: [] });
+      processes.forEach(p => {
+        if (p.parent_pid && map[p.parent_pid]) {
+          map[p.parent_pid].children.push(map[p.pid]);
+        }
+      });
+      return processes.filter(p => !p.parent_pid || !map[p.parent_pid]).map(p => map[p.pid]);
+    }
+
+    function renderProcessTree(processes, host) {
+      const tbody = document.querySelector("#procTable tbody");
+      tbody.innerHTML = "";
+      const roots = buildTree(processes);
+      roots.forEach(proc => renderRow(proc, 0, host).forEach(r => tbody.appendChild(r)));
+    }
+
+    function renderRow(proc, level, host) {
+      const tr = document.createElement("tr");
+      tr.id = `row-${host}-${proc.pid}`;
+      tr.innerHTML = `
+        <td>${proc.children.length ? '<span class="toggle">▶</span>' : ''}</td>
+        <td>${host}</td>
+        <td style="padding-left:${20*level}px">${proc.name}</td>
+        <td>${proc.pid}</td>
+        <td>${proc.parent_pid ?? "-"}</td>
+        <td>${(proc.cpu_percent ?? 0).toFixed(1)}</td>
+        <td>${proc.memory_mb ? proc.memory_mb.toFixed(2) : 0}</td>
+      `;
+      if (proc.children.length) {
+        const btn = tr.querySelector(".toggle");
+        btn.onclick = () => {
+          const open = btn.textContent === "▶";
+          btn.textContent = open ? "▼" : "▶";
+          proc.children.forEach(ch => toggleChild(ch, open, host));
+        };
+      }
+      return [tr, ...proc.children.flatMap(ch => renderRow(ch, level + 1, host))];
+    }
+
+    function toggleChild(proc, show, host) {
+      const row = document.getElementById(`row-${host}-${proc.pid}`);
+      if (row) {
+        row.style.display = show ? "" : "none";
+        if (!show) proc.children.forEach(ch => toggleChild(ch, false, host));
+      }
+    }
+
     fetchHosts();
+    setInterval(updateHost, 30000);
   </script>
 </body>
 </html>
