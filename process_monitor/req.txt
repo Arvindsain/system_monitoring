@@ -2,3 +2,4 @@ django
 djangorestframework
 psutil
 requests
+pyinstaller
