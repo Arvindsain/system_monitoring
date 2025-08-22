@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Process Monitor</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+    h1 { margin-top: 0; }
+    .muted { color: #666; font-size: 12px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th {
+      background: #2b3148;
+      color: #fff;
+    }
+    tr:nth-child(even) { background: #f9f9f9; }
+
+    .toggle { cursor: pointer; font-weight: bold; margin-right: 6px; }
+    .hidden { display: none; }
+    .indent { padding-left: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Process Monitor</h1>
+  <p>Host: <span id="hostname"></span></p>
+  <p>Timestamp: <span id="timestamp"></span></p>
+  <button onclick="fetchData()">Refresh</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Name</th>
+        <th>PID</th>
+        <th>PPID</th>
+        <th>CPU (%)</th>
+        <th>Memory (MB)</th>
+      </tr>
+    </thead>
+    <tbody id="procTable"></tbody>
+  </table>
+
+  <script>
+    const BACKEND_URL = "http://127.0.0.1:8000/retrieve/arvindsain05/";
+    function buildTree(processes) {
+      const map = {};
+      processes.forEach(p => map[p.pid] = { ...p, children: [] });
+      processes.forEach(p => {
+        if (p.ppid && map[p.ppid]) {
+          map[p.ppid].children.push(map[p.pid]);
+        }
+      });
+      return processes.filter(p => !p.ppid || !map[p.ppid]).map(p => map[p.pid]);
+    }
+
+    function renderRow(proc, level = 0) {
+      const tr = document.createElement("tr");
+      tr.id = `row-${proc.pid}`;
+      tr.dataset.level = level;
+
+      const toggleCell = document.createElement("td");
+      if (proc.children.length) {
+        const btn = document.createElement("span");
+        btn.textContent = "▶";
+        btn.className = "toggle";
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const isClosed = btn.textContent === "▶";
+          btn.textContent = isClosed ? "▼" : "▶";
+          proc.children.forEach(ch => toggleChild(ch.pid, isClosed));
+        };
+        toggleCell.appendChild(btn);
+      }
+      tr.appendChild(toggleCell);
+
+      tr.innerHTML += `
+        <td style="padding-left:${20*level}px">${proc.name}</td>
+        <td>${proc.pid}</td>
+        <td>${proc.ppid ?? "-"}</td>
+        <td>${(proc.cpu_percent ?? 0).toFixed(1)}</td>
+        <td>${proc.mem_rss ? (proc.mem_rss/1024/1024).toFixed(2) : 0}</td>
+      `;
+
+      return [tr, ...proc.children.flatMap(ch => renderRow(ch, level+1))];
+    }
+
+    function toggleChild(pid, show) {
+      const row = document.getElementById(`row-${pid}`);
+      if (row) {
+        row.style.display = show ? "" : "none";
+        const toggle = row.querySelector(".toggle");
+        if (!show && toggle) toggle.textContent = "▶";
+      }
+    }
+
+    function fetchData() {
+      fetch(BACKEND_URL)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("hostname").textContent = data.host;
+          document.getElementById("timestamp").textContent = data.timestamp;
+
+          const tbody = document.getElementById("procTable");
+          tbody.innerHTML = "";
+
+          const roots = buildTree(data.processes);
+          roots.forEach(proc => {
+            const rows = renderRow(proc);
+            rows.forEach(r => tbody.appendChild(r));
+          });
+        })
+        .catch(err => console.error("Error:", err));
+    }
+
+    setInterval(fetchData, 30000);
+    fetchData();
+  </script>
+</body>
+</html>
