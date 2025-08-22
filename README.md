@@ -9,7 +9,7 @@ This is a Django REST framework project for monitoring systems process
 ### 1. Clone the Repository
 
 ```bash
-git clone git@github.com:Arvindsain/system_monitoring.git
+git clone https://github.com/Arvindsain/system_monitoring.git
 cd system_monitoring
 ```
 
@@ -52,6 +52,15 @@ python manage.py migrate
 ```bash
 python manage.py runserver
 ```
+### Create application
+1. GO to monitor app in project 
+2. Run 
+```bash
+pyinstaller --onefile agent.py
+```
+3. it will create agent.exe
+4. Now double click it, it will send all processes data to backend.
+
 ### Process to get data and show in frontend
 
 1. Copy agent to system from dist folder from monitor app.
